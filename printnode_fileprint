@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrintNode PDF Printing Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            background-color: #f0f0f0; /* Background color for readonly fields */
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .result {
+            margin-top: 20px;
+            display: none;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PrintNode PDF Printing Tool</h1>
+        
+        <div class="form-group">
+            <label for="pdfFile">Select PDF File:</label>
+            <input type="file" id="pdfFile" accept="application/pdf">
+        </div>
+        
+        <div class="form-group">
+            <label for="printerID">Printer ID:</label>
+            <input type="text" id="printerID" value="74168181" readonly>
+        </div>
+        
+        <div class="form-group">
+            <label for="apiKey">API Key:</label>
+            <input type="text" id="apiKey" value="k_U1gCrcax90Sgu9z9AJKuaNZ1SMVgRdovBaOCLKYnw" readonly>
+        </div>
+        
+        <div class="form-group">
+            <button id="printButton">Print Document</button>
+        </div>
+        
+        <div id="result" class="result">
+            <h2>Print Job Status</h2>
+            <div id="statusMessage"></div>
+            <pre id="responseData"></pre>
+        </div>
+    </div>
+    
+    <script>
+        // Convert file to base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+        
+        // Handle print button click
+        document.getElementById('printButton').addEventListener('click', async function() {
+            const fileInput = document.getElementById('pdfFile');
+            const printerID = document.getElementById('printerID').value;
+            const apiKey = document.getElementById('apiKey').value;
+            const resultDiv = document.getElementById('result');
+            const statusMessage = document.getElementById('statusMessage');
+            const responseData = document.getElementById('responseData');
+            
+            // Validate inputs
+            if (!fileInput.files.length) {
+                alert('Please select a PDF file');
+                return;
+            }
+            
+            try {
+                // Show loading message
+                resultDiv.style.display = 'block';
+                statusMessage.innerHTML = '<p>Processing your PDF file...</p>';
+                
+                // Convert file to base64
+                const base64Data = await fileToBase64(fileInput.files[0]);
+                
+                // Create print job data
+                const printJobData = {
+                    printerId: parseInt(printerID),
+                    contentType: 'pdf_base64',
+                    content: base64Data,
+                    source: 'Web Print Tool'
+                };
+                
+                statusMessage.innerHTML = '<p>Sending print job to PrintNode...</p>';
+                
+                // Send request to PrintNode API
+                // Note: In a real-world scenario, this would be handled by a server-side component
+                // to avoid CORS issues and protect your API key
+                fetch('https://api.printnode.com/printjobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Basic ' + btoa(apiKey + ':')
+                    },
+                    body: JSON.stringify(printJobData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data && typeof data === 'number') {
+                        // Success - PrintNode returns the print job ID as a number
+                        statusMessage.innerHTML = `<p class="success">Success! Print job ID: ${data}</p>`;
+                        responseData.textContent = JSON.stringify(data, null, 2);
+                    } else {
+                        // Error response
+                        statusMessage.innerHTML = `<p class="error">Error: ${data.message || 'Unknown error'}</p>`;
+                        responseData.textContent = JSON.stringify(data, null, 2);
+                    }
+                })
+                .catch(error => {
+                    // Network or other error
+                    statusMessage.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                    responseData.textContent = `Failed to communicate with PrintNode API. This is likely due to CORS restrictions when running locally.
+                    
+In a production environment, this API call should be handled by your server-side code to:
+1. Avoid exposing your API key in the browser
+2. Bypass CORS restrictions
+3. Provide proper error handling
+
+Server-side pseudocode:
+- Receive base64 PDF data from client
+- Authenticate with PrintNode using server-stored API key
+- Send print job data to PrintNode API
+- Return success/error status to client`;
+                });
+                
+            } catch (error) {
+                statusMessage.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

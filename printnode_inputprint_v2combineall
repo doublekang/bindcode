@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to PrintNode Tool</title>
+    <!-- Use specific version of jsPDF with extended Unicode support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.5.3/jspdf.min.js"></script>
+    <!-- Add QR code generation library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        input[readonly] {
+            background-color: #f0f0f0;
+            color: #555;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .result {
+            margin-top: 20px;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            resize: vertical;
+        }
+        /* Hidden QR code canvas for generation */
+        #qrcode {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Generation & Printing Tool</h1>
+        
+        <!-- PDF Content Entry Section -->
+        <div>
+            <div class="form-group">
+                <label for="senderPhone">เบอร์ผู้ส่ง:</label>
+                <input type="text" id="senderPhone" placeholder="เบอร์ผู้ส่ง">
+                
+            </div>
+            
+            <div class="form-group">
+                <label for="pdfContent">Enter Content for PDF:</label>
+                <textarea id="pdfContent" placeholder="Enter the content that will be converted to PDF..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <button id="processAllBtn">Generate, Upload & Print</button>
+            </div>
+        </div>
+        
+        <!-- Hidden QR code element for generation -->
+        <div id="qrcode"></div>
+    </div>
+    
+    <!-- GitHub Upload Section -->
+    <div class="container">
+        <h2>GitHub Repository Information</h2>
+        <div class="form-group">
+            <label for="githubToken">GitHub Token:</label>
+            <input type="text" id="githubToken" value="_ZuQabnRrszH2SkaysWXSdat8fep3Ki0yDKxr" readonly>
+        // add ghp before_
+        </div>
+        
+        <div class="form-group">
+            <label for="repoName">Repository Name:</label>
+            <input type="text" id="repoName" value="doublekang/bindcode/" readonly>
+        </div>
+        
+        <div class="form-group">
+            <label for="filePath">File Path:</label>
+            <input type="text" id="filePath" readonly>
+        </div>
+        
+        <!-- GitHub Upload Result -->
+        <div id="githubResult" class="result" style="display: none;">
+            <h3>GitHub Upload Result</h3>
+            <pre id="githubResponse"></pre>
+        </div>
+    </div>
+    
+    <!-- PrintNode Section -->
+    <div class="container">
+        <h2>PrintNode Configuration</h2>
+        <div class="form-group">
+            <label for="printNodeApiKey">PrintNode API Key:</label>
+            <input type="text" id="printNodeApiKey" value="k_U1gCrcax90Sgu9z9AJKuaNZ1SMVgRdovBaOCLKYnw" readonly>
+        </div>
+        
+        <div class="form-group">
+            <label for="printNodePrinterId">PrintNode Printer ID:</label>
+            <input type="text" id="printNodePrinterId" value="74168181" readonly>
+        </div>
+        
+        <!-- Print Job Result -->
+        <div id="printResult" class="result" style="display: none;">
+            <h3>Print Job Result</h3>
+            <pre id="printResponse"></pre>
+        </div>
+    </div>
+    
+    <script>
+        // Global variable to store PDF as base64
+        let pdfBase64Data = null;
+        
+        // Generate file path using current date (yymmdd) + 2 digit running number
+        function generateFilePath() {
+            const now = new Date();
+            const year = now.getFullYear().toString().slice(-2);
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            const dateString = year + month + day;
+            const runningNumber = '01'; // Fixed running number (would be dynamic in real implementation)
+            return dateString + runningNumber + '.pdf';
+        }
+        
+        // Set the file path when the page loads
+        document.getElementById('filePath').value = generateFilePath();
+        
+        // Function to generate QR code and return as base64 data
+        function generateQRCode(text) {
+            return new Promise((resolve) => {
+                // Clear previous QR code
+                const qrElement = document.getElementById('qrcode');
+                qrElement.innerHTML = '';
+                
+                // Generate new QR code
+                new QRCode(qrElement, {
+                    text: text,
+                    width: 128,
+                    height: 128
+                });
+                
+                // Give a little time for the QR code to render
+                setTimeout(() => {
+                    // Get the QR code as an image
+                    const qrImage = qrElement.querySelector('img');
+                    resolve(qrImage.src);
+                }, 200);
+            });
+        }
+        
+        // Generate PDF from text content - using canvas-based approach for Thai text
+        async function generatePDF() {
+            return new Promise(async (resolve, reject) => {
+                const content = document.getElementById('pdfContent').value;
+                const phoneNumber = document.getElementById('senderPhone').value;
+                
+                if (!content.trim()) {
+                    reject(new Error('Please enter content for the PDF'));
+                    return;
+                }
+                
+                try {
+                    // Create PDF instance
+                    const doc = new jsPDF();
+                    
+                    // Generate QR code
+                    const qrCodeDataUrl = await generateQRCode("https://line.me/R/ti/p/@094okzxj");
+                    
+                    // Add QR code to PDF
+                    doc.addImage(qrCodeDataUrl, 'PNG', 15, 15, 40, 40);
+                    
+                    // Add text "Scan ส่งภาพทางไลน์" to the right of QR code
+                    doc.setFontSize(24);
+                    doc.text("Scan Line to send", 60, 35);
+                    
+                    // Set starting position below QR code and text
+                    let yPosition = 70;
+                    
+                    // Create a canvas element for text rendering
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Set up canvas for text rendering
+                    canvas.width = 500;  // Width of the text area
+                    canvas.height = 800; // Height should be sufficient for the text
+                    
+                    // Set font and style
+                    ctx.fillStyle = '#000000';
+                    // Use a system font that supports Thai (most modern browsers support this)
+                    ctx.font = '48px Arial, sans-serif';
+                    ctx.textBaseline = 'top';
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // First, draw the phone number if provided
+                    let textYPosition = 0;
+                    if (phoneNumber) {
+                        ctx.fillText("เบอร์ผู้ส่ง: " + phoneNumber, 0, textYPosition);
+                        textYPosition += 60; // Move down for content
+                    }
+                    
+                    // Wrap and draw the content
+                    const words = content.split(' ');
+                    let line = '';
+                    for (let n = 0; n < words.length; n++) {
+                        const testLine = line + words[n] + ' ';
+                        const metrics = ctx.measureText(testLine);
+                        const testWidth = metrics.width;
+                        
+                        if (testWidth > 450 && n > 0) {
+                            ctx.fillText(line, 0, textYPosition);
+                            line = words[n] + ' ';
+                            textYPosition += 60; // Adjust for larger font
+                        } else {
+                            line = testLine;
+                        }
+                    }
+                    ctx.fillText(line, 0, textYPosition);
+                    
+                    // Add the canvas as an image to the PDF
+                    const dataUrl = canvas.toDataURL('image/png');
+                    doc.addImage(dataUrl, 'PNG', 15, yPosition, 180, canvas.height * 0.3);
+                    
+                    // Convert to base64 data URI
+                    const pdfDataUri = doc.output('datauristring');
+                    
+                    // Store base64 data without the prefix
+                    pdfBase64Data = pdfDataUri.split(',')[1];
+                    
+                    console.log('PDF generated successfully');
+                    resolve(pdfBase64Data);
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    reject(error);
+                }
+            });
+        }
+        
+        // Upload to GitHub
+        function uploadToGitHub() {
+            return new Promise((resolve, reject) => {
+                if (!pdfBase64Data) {
+                    reject(new Error('No PDF data available'));
+                    return;
+                }
+                
+                const token = document.getElementById('githubToken').value;
+                const repoFullName = document.getElementById('repoName').value.replace(/\/$/, ''); // Remove trailing slash if present
+                const path = document.getElementById('filePath').value;
+                
+                // Extract owner and repo from the repository name
+                const [owner, repo] = repoFullName.split('/');
+                
+                // First, check if the file already exists to get the SHA if it does
+                fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                    headers: {
+                        'Authorization': `token ${token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                })
+                .then(response => {
+                    let sha = null;
+                    
+                    // If the file exists, get its SHA for the update
+                    if (response.ok) {
+                        return response.json().then(data => {
+                            sha = data.sha;
+                            return sha;
+                        });
+                    }
+                    return sha; // Return null if file doesn't exist
+                })
+                .then(sha => {
+                    // Prepare the request body
+                    const requestBody = {
+                        message: `Upload PDF document ${path}`,
+                        content: pdfBase64Data
+                    };
+                    
+                    // If file exists, include the SHA for update
+                    if (sha) {
+                        requestBody.sha = sha;
+                    }
+                    
+                    // Create or update the file
+                    return fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${token}`,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/vnd.github.v3+json'
+                        },
+                        body: JSON.stringify(requestBody)
+                    });
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(errorData => {
+                            throw new Error(`GitHub API error: ${errorData.message}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Success response
+                    const successResponse = {
+                        success: true,
+                        message: "File uploaded successfully to GitHub!",
+                        content: {
+                            name: data.content.name,
+                            path: data.content.path,
+                            sha: data.content.sha,
+                            size: data.content.size,
+                            url: data.content.html_url || `https://github.com/${repoFullName}/blob/main/${path}`
+                        },
+                        commit: {
+                            message: data.commit.message,
+                            sha: data.commit.sha,
+                            url: data.commit.html_url
+                        }
+                    };
+                    
+                    document.getElementById('githubResponse').textContent = JSON.stringify(successResponse, null, 2);
+                    document.getElementById('githubResult').style.display = 'block';
+                    resolve(successResponse);
+                })
+                .catch(error => {
+                    // Error response
+                    const errorResponse = {
+                        success: false,
+                        error: error.message,
+                        details: "There was an error uploading to GitHub. Check the console for more details."
+                    };
+                    
+                    console.error('GitHub upload error:', error);
+                    document.getElementById('githubResponse').textContent = JSON.stringify(errorResponse, null, 2);
+                    document.getElementById('githubResult').style.display = 'block';
+                    reject(error);
+                });
+            });
+        }
+        
+        // Print via PrintNode
+        function printViaPrintNode() {
+            return new Promise((resolve, reject) => {
+                if (!pdfBase64Data) {
+                    reject(new Error('No PDF data available'));
+                    return;
+                }
+                
+                const apiKey = document.getElementById('printNodeApiKey').value;
+                const printerId = document.getElementById('printNodePrinterId').value;
+                
+                // Prepare the print job data
+                const printJobData = {
+                    printerId: parseInt(printerId),
+                    contentType: 'pdf_base64',
+                    content: pdfBase64Data,
+                    source: 'PDF Web Tool'
+                };
+                
+                // Send the print job to PrintNode
+                fetch('https://api.printnode.com/printjobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Basic ' + btoa(apiKey + ':')
+                    },
+                    body: JSON.stringify(printJobData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(errorData => {
+                            throw new Error(`PrintNode API error: ${errorData.message || 'Unknown error'}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Success response
+                    const successResponse = {
+                        success: true,
+                        message: "Print job successfully sent to PrintNode!",
+                        printJobId: data,
+                        printer: {
+                            id: printerId
+                        },
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    document.getElementById('printResponse').textContent = JSON.stringify(successResponse, null, 2);
+                    document.getElementById('printResult').style.display = 'block';
+                    resolve(successResponse);
+                })
+                .catch(error => {
+                    // Error response
+                    const errorResponse = {
+                        success: false,
+                        error: error.message,
+                        details: "There was an error sending the print job to PrintNode. Check the console for more details."
+                    };
+                    
+                    console.error('PrintNode error:', error);
+                    document.getElementById('printResponse').textContent = JSON.stringify(errorResponse, null, 2);
+                    document.getElementById('printResult').style.display = 'block';
+                    reject(error);
+                });
+            });
+        }
+        
+        // Combined process: Generate PDF, Upload to GitHub, and Print
+        document.getElementById('processAllBtn').addEventListener('click', async function() {
+            try {
+                // Step 1: Generate PDF
+                await generatePDF();
+                console.log('PDF generated successfully');
+                
+                // Step 2: Upload to GitHub
+                await uploadToGitHub();
+                console.log('PDF uploaded to GitHub successfully');
+                
+                // Step 3: Send to PrintNode
+                await printViaPrintNode();
+                console.log('Print job sent successfully');
+                
+                // Show success message
+                alert('Success! PDF was generated, uploaded to GitHub, and sent to printer.');
+            } catch (error) {
+                console.error('Process failed:', error);
+                alert('Error: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
+</html>
+                  
